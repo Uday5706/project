@@ -2,10 +2,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:provider/provider.dart';
-
-import '../providers/user_provider.dart';
-import 'home_screen.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -36,25 +32,11 @@ class _AuthScreenState extends State<AuthScreen> {
       final userCredential = await _auth.signInWithCredential(credential);
 
       if (userCredential.user != null) {
-        final user = userCredential.user!;
-        final userProvider = Provider.of<UserProvider>(context, listen: false);
-
-        // Copy user details to the UserProvider
-        userProvider.setUser(
-          UserModel(
-            uid: user.uid,
-            displayName: user.displayName,
-            email: user.email,
-            photoURL: user.photoURL,
-          ),
+        // That's it! The StreamBuilder in main.dart and the UserProvider's
+        // internal listener will handle the rest automatically.
+        debugPrint(
+          "Google Sign-In successful. Automatic navigation will occur.",
         );
-
-        // Navigate to the home screen on successful sign-in or sign-up
-        if (context.mounted) {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (context) => const HomeScreen()),
-          );
-        }
       }
     } catch (e) {
       debugPrint("Google Sign-In Error: $e");

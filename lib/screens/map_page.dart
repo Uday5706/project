@@ -11,7 +11,7 @@ class MapPage extends StatelessWidget {
 
   const MapPage({super.key, required this.userLocationFuture});
 
-  static const LatLng _defaultLocation = LatLng(37.422, -122.084);
+  static const LatLng _defaultLocation = LatLng(28.7041, 77.1025); // Fallback
 
   Set<Marker> _getAlertMarkers(List<Alert> alerts, LatLng? userLocation) {
     Set<Marker> markers = {};
@@ -28,7 +28,7 @@ class MapPage extends StatelessWidget {
 
     for (var alert in alerts) {
       BitmapDescriptor icon;
-      switch (alert.severity) {
+      switch (alert.severity.toLowerCase()) {
         case 'high':
           icon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed);
           break;
@@ -45,28 +45,26 @@ class MapPage extends StatelessWidget {
       markers.add(
         Marker(
           markerId: MarkerId(alert.alertId),
-          position: LatLng(alert.location.latitude, alert.location.longitude),
+          position: LatLng(
+            alert.locationCoordinates.latitude,
+            alert.locationCoordinates.longitude,
+          ),
           icon: icon,
-          infoWindow: InfoWindow(title: alert.typeOfHazard),
+          infoWindow: InfoWindow(
+            title: alert.hazard,
+            snippet: alert.description,
+          ),
         ),
       );
     }
     return markers;
   }
 
-  Widget _buildMap(LatLng initialCenter, Set<Marker> markers, bool fullScreen) {
-    return GoogleMap(
-      mapType: MapType.normal,
-      initialCameraPosition: CameraPosition(target: initialCenter, zoom: 12.0),
-      markers: markers,
-      myLocationEnabled: true,
-      myLocationButtonEnabled: false,
-    );
-  }
-
+  // UPDATED: Replaced the dark overlay with a cleaner "expand" icon
   Widget _buildMiniMap(
     BuildContext context,
     LatLng initialCenter,
+    LatLng userLocation, // Pass the user location for the full-screen map
     Set<Marker> markers,
   ) {
     return InkWell(
@@ -74,41 +72,61 @@ class MapPage extends StatelessWidget {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) =>
-                FullScreenMap(initialCenter: initialCenter, markers: markers),
+            builder: (context) => FullScreenMap(
+              initialCenter: initialCenter,
+              userLocation: userLocation, // Pass the location
+              markers: markers,
+            ),
           ),
         );
       },
       child: Stack(
+        alignment: Alignment.bottomRight,
         children: [
           Container(
             height: 250,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(15.0),
-              border: Border.all(color: Colors.blueAccent, width: 2),
+              border: Border.all(
+                color: Colors.blueAccent.withOpacity(0.5),
+                width: 1,
+              ),
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(15.0),
-              child: _buildMap(initialCenter, markers, false),
-            ),
-          ),
-          Positioned.fill(
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(15.0),
-                color: Colors.black.withOpacity(0.3),
-              ),
-              child: const Center(
-                child: Text(
-                  'Tap to view full map',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 20,
+              child: AbsorbPointer(
+                // Makes the map underneath not interactive
+                child: GoogleMap(
+                  mapType: MapType.normal,
+                  initialCameraPosition: CameraPosition(
+                    target: initialCenter,
+                    zoom: 12.0,
                   ),
+                  markers: markers,
+                  myLocationButtonEnabled: false,
+                  zoomControlsEnabled: false,
+                  scrollGesturesEnabled: false,
+                  zoomGesturesEnabled: false,
                 ),
               ),
             ),
+          ),
+          // This is the new "expand" icon
+          Container(
+            margin: const EdgeInsets.all(8.0),
+            padding: const EdgeInsets.all(8.0),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.2),
+                  blurRadius: 5,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: const Icon(Icons.fullscreen, color: Colors.blueAccent),
           ),
         ],
       ),
@@ -175,41 +193,46 @@ class MapPage extends StatelessWidget {
           return const Center(
             child: SpinKitWaveSpinner(color: Colors.blueAccent, size: 50.0),
           );
-        } else if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
-        } else {
-          final LatLng userLocation = snapshot.data ?? _defaultLocation;
-          return Consumer<AlertsProvider>(
-            builder: (context, alertsProvider, child) {
-              final alerts = alertsProvider.alerts;
-              final markers = _getAlertMarkers(alerts, userLocation);
-
-              final initialCenter = userLocation;
-
-              return Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Live Alerts Map',
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      _buildMiniMap(context, initialCenter, markers),
-                      const SizedBox(height: 16),
-                      _buildLegend(),
-                    ],
-                  ),
-                ),
-              );
-            },
-          );
         }
+        if (snapshot.hasError) {
+          return Center(child: Text('Error: ${snapshot.error}'));
+        }
+
+        final LatLng userLocation = snapshot.data ?? _defaultLocation;
+        return Consumer<AlertsProvider>(
+          builder: (context, alertsProvider, child) {
+            final alerts = alertsProvider.alerts;
+            final markers = _getAlertMarkers(alerts, userLocation);
+            final initialCenter = userLocation;
+
+            return Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Live Alerts Map',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _buildMiniMap(
+                      context,
+                      initialCenter,
+                      userLocation,
+                      markers,
+                    ),
+                    const SizedBox(height: 16),
+                    _buildLegend(),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
       },
     );
   }
@@ -217,11 +240,13 @@ class MapPage extends StatelessWidget {
 
 class FullScreenMap extends StatefulWidget {
   final LatLng initialCenter;
+  final LatLng userLocation; // UPDATED: Pass the user's location
   final Set<Marker> markers;
 
   const FullScreenMap({
     super.key,
     required this.initialCenter,
+    required this.userLocation,
     required this.markers,
   });
 
@@ -240,6 +265,16 @@ class _FullScreenMapState extends State<FullScreenMap> {
   void _zoomOut() async {
     final GoogleMapController controller = await _controller.future;
     controller.animateCamera(CameraUpdate.zoomOut());
+  }
+
+  // NEW: Method to animate the camera back to the user's location
+  void _centerOnMyLocation() async {
+    final GoogleMapController controller = await _controller.future;
+    controller.animateCamera(
+      CameraUpdate.newCameraPosition(
+        CameraPosition(target: widget.userLocation, zoom: 14.0),
+      ),
+    );
   }
 
   @override
@@ -266,16 +301,26 @@ class _FullScreenMapState extends State<FullScreenMap> {
             },
             myLocationEnabled: true,
             myLocationButtonEnabled: false,
+            zoomControlsEnabled: false, // Hide default zoom buttons
           ),
           Positioned(
-            bottom: 16,
+            bottom: 20,
             right: 16,
             child: Column(
               children: [
+                // NEW: The "Center on My Location" button
+                FloatingActionButton(
+                  heroTag: 'centerButton',
+                  backgroundColor: Colors.white,
+                  foregroundColor: Colors.blueAccent,
+                  onPressed: _centerOnMyLocation,
+                  child: const Icon(Icons.my_location),
+                ),
+                const SizedBox(height: 16),
                 FloatingActionButton(
                   heroTag: 'zoomInButton',
                   mini: true,
-                  backgroundColor: Colors.white,
+                  backgroundColor: Colors.white.withOpacity(0.9),
                   foregroundColor: Colors.blueAccent,
                   onPressed: _zoomIn,
                   child: const Icon(Icons.add),
@@ -284,7 +329,7 @@ class _FullScreenMapState extends State<FullScreenMap> {
                 FloatingActionButton(
                   heroTag: 'zoomOutButton',
                   mini: true,
-                  backgroundColor: Colors.white,
+                  backgroundColor: Colors.white.withOpacity(0.9),
                   foregroundColor: Colors.blueAccent,
                   onPressed: _zoomOut,
                   child: const Icon(Icons.remove),

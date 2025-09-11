@@ -48,7 +48,8 @@ class _HomeScreenState extends State<HomeScreen> {
     if (loc.latitude != null && loc.longitude != null) {
       return LatLng(loc.latitude!, loc.longitude!);
     }
-    return const LatLng(37.422, -122.084);
+    // Default to a fallback location if needed
+    return const LatLng(28.7041, 77.1025); // Example: Delhi
   }
 
   @override
@@ -57,6 +58,7 @@ class _HomeScreenState extends State<HomeScreen> {
       const ChatsPage(),
       AlertsPage(
         locationFuture: _locationFuture,
+        userCoordinatesFuture: _userCoordinatesFuture, // <-- ADD THIS
         onNavigateToTab: _onItemTapped,
       ),
       AddPostPage(onNavigateToTab: _onItemTapped),
@@ -70,7 +72,7 @@ class _HomeScreenState extends State<HomeScreen> {
         leading: IconButton(
           icon: const Icon(Icons.menu, color: Colors.white),
           onPressed: () {
-            print('Menu button pressed');
+            // TODO: Implement drawer functionality
           },
         ),
         title: Text(
@@ -87,11 +89,13 @@ class _HomeScreenState extends State<HomeScreen> {
             padding: const EdgeInsets.all(10.0),
             child: InkWell(
               onTap: () {
-                print('User profile tapped');
+                // Navigate to profile page when avatar is tapped
+                _onItemTapped(4);
               },
               child: Consumer<UserProvider>(
                 builder: (context, userProvider, child) {
-                  final user = userProvider.user;
+                  // UPDATED: Use the correct 'firebaseUser' getter
+                  final user = userProvider.firebaseUser;
                   return CircleAvatar(
                     backgroundImage: user?.photoURL != null
                         ? NetworkImage(user!.photoURL!)
@@ -105,77 +109,76 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       body: widgetOptions.elementAt(_selectedIndex),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          _onItemTapped(2);
-        },
-        backgroundColor: Colors.blueAccent,
-        child: const Icon(Icons.add, color: Colors.white),
-        shape: const CircleBorder(),
-      ),
+      floatingActionButton: _selectedIndex == 2
+          ? null // Hide the FAB when on the AddPostPage (index 2)
+          : FloatingActionButton(
+              onPressed: () {
+                _onItemTapped(2);
+              },
+              backgroundColor: Colors.blueAccent,
+              child: const Icon(Icons.add, color: Colors.white),
+              shape: const CircleBorder(),
+            ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      bottomNavigationBar: Container(
-        // decoration: const BoxDecoration(
-        //   border: Border(top: BorderSide(color: Colors.grey, width: 2.0)),
-        // ),
-        child: BottomNavigationBar(
-          items: <BottomNavigationBarItem>[
-            BottomNavigationBarItem(
-              icon: const Padding(
-                padding: EdgeInsets.only(bottom: 4.0),
-                child: Icon(Icons.chat_bubble_outline),
-              ),
-              activeIcon: const Padding(
-                padding: EdgeInsets.only(bottom: 4.0),
-                child: Icon(Icons.chat),
-              ),
-              label: 'Chats',
+      bottomNavigationBar: BottomNavigationBar(
+        items: <BottomNavigationBarItem>[
+          const BottomNavigationBarItem(
+            icon: Padding(
+              padding: EdgeInsets.only(bottom: 4.0),
+              child: Icon(Icons.chat_bubble_outline),
             ),
-            BottomNavigationBarItem(
-              icon: const Padding(
-                padding: EdgeInsets.only(bottom: 4.0),
-                child: Icon(Icons.warning_amber),
-              ),
-              activeIcon: const Padding(
-                padding: EdgeInsets.only(bottom: 4.0),
-                child: Icon(Icons.warning),
-              ),
-              label: 'Alerts',
+            activeIcon: Padding(
+              padding: EdgeInsets.only(bottom: 4.0),
+              child: Icon(Icons.chat),
             ),
-            BottomNavigationBarItem(
-              icon: Container(width: 16, height: 16),
-              label: 'Report',
+            label: 'Chats',
+          ),
+          const BottomNavigationBarItem(
+            icon: Padding(
+              padding: EdgeInsets.only(bottom: 4.0),
+              child: Icon(Icons.warning_amber),
             ),
-            BottomNavigationBarItem(
-              icon: const Padding(
-                padding: EdgeInsets.only(bottom: 4.0),
-                child: Icon(Icons.map_outlined),
-              ),
-              activeIcon: const Padding(
-                padding: EdgeInsets.only(bottom: 4.0),
-                child: Icon(Icons.map),
-              ),
-              label: 'Map',
+            activeIcon: Padding(
+              padding: EdgeInsets.only(bottom: 4.0),
+              child: Icon(Icons.warning),
             ),
-            BottomNavigationBarItem(
-              icon: const Padding(
-                padding: EdgeInsets.only(bottom: 4.0),
-                child: Icon(Icons.person_outline),
-              ),
-              activeIcon: const Padding(
-                padding: EdgeInsets.only(bottom: 4.0),
-                child: Icon(Icons.person),
-              ),
-              label: 'Profile',
+            label: 'Alerts',
+          ),
+          // This empty item creates the space for the FAB
+          const BottomNavigationBarItem(
+            icon: SizedBox(width: 28, height: 28),
+            label: 'Report',
+          ),
+          const BottomNavigationBarItem(
+            icon: Padding(
+              padding: EdgeInsets.only(bottom: 4.0),
+              child: Icon(Icons.map_outlined),
             ),
-          ],
-          currentIndex: _selectedIndex,
-          selectedItemColor: Colors.blueAccent,
-          unselectedItemColor: Colors.grey,
-          onTap: _onItemTapped,
-          type: BottomNavigationBarType.fixed,
-          backgroundColor: Colors.white,
-        ),
+            activeIcon: Padding(
+              padding: EdgeInsets.only(bottom: 4.0),
+              child: Icon(Icons.map),
+            ),
+            label: 'Map',
+          ),
+          const BottomNavigationBarItem(
+            icon: Padding(
+              padding: EdgeInsets.only(bottom: 4.0),
+              child: Icon(Icons.person_outline),
+            ),
+            activeIcon: Padding(
+              padding: EdgeInsets.only(bottom: 4.0),
+              child: Icon(Icons.person),
+            ),
+            label: 'Profile',
+          ),
+        ],
+        currentIndex: _selectedIndex,
+        selectedItemColor: Colors.blueAccent,
+        unselectedItemColor: Colors.grey,
+        onTap: _onItemTapped,
+        type: BottomNavigationBarType.fixed,
+        backgroundColor: Colors.white,
+        showUnselectedLabels: true,
       ),
     );
   }
