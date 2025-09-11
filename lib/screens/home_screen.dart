@@ -114,63 +114,68 @@ class _HomeScreenState extends State<HomeScreen> {
         shape: const CircleBorder(),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      bottomNavigationBar: BottomNavigationBar(
-        items: <BottomNavigationBarItem>[
-          BottomNavigationBarItem(
-            icon: const Padding(
-              padding: EdgeInsets.only(bottom: 4.0),
-              child: Icon(Icons.chat_bubble_outline),
+      bottomNavigationBar: Container(
+        // decoration: const BoxDecoration(
+        //   border: Border(top: BorderSide(color: Colors.grey, width: 2.0)),
+        // ),
+        child: BottomNavigationBar(
+          items: <BottomNavigationBarItem>[
+            BottomNavigationBarItem(
+              icon: const Padding(
+                padding: EdgeInsets.only(bottom: 4.0),
+                child: Icon(Icons.chat_bubble_outline),
+              ),
+              activeIcon: const Padding(
+                padding: EdgeInsets.only(bottom: 4.0),
+                child: Icon(Icons.chat),
+              ),
+              label: 'Chats',
             ),
-            activeIcon: const Padding(
-              padding: EdgeInsets.only(bottom: 4.0),
-              child: Icon(Icons.chat),
+            BottomNavigationBarItem(
+              icon: const Padding(
+                padding: EdgeInsets.only(bottom: 4.0),
+                child: Icon(Icons.warning_amber),
+              ),
+              activeIcon: const Padding(
+                padding: EdgeInsets.only(bottom: 4.0),
+                child: Icon(Icons.warning),
+              ),
+              label: 'Alerts',
             ),
-            label: 'Chats',
-          ),
-          BottomNavigationBarItem(
-            icon: const Padding(
-              padding: EdgeInsets.only(bottom: 4.0),
-              child: Icon(Icons.warning_amber),
+            BottomNavigationBarItem(
+              icon: Container(width: 16, height: 16),
+              label: 'Report',
             ),
-            activeIcon: const Padding(
-              padding: EdgeInsets.only(bottom: 4.0),
-              child: Icon(Icons.warning),
+            BottomNavigationBarItem(
+              icon: const Padding(
+                padding: EdgeInsets.only(bottom: 4.0),
+                child: Icon(Icons.map_outlined),
+              ),
+              activeIcon: const Padding(
+                padding: EdgeInsets.only(bottom: 4.0),
+                child: Icon(Icons.map),
+              ),
+              label: 'Map',
             ),
-            label: 'Alerts',
-          ),
-          BottomNavigationBarItem(
-            icon: Container(width: 16, height: 16),
-            label: 'Report',
-          ),
-          BottomNavigationBarItem(
-            icon: const Padding(
-              padding: EdgeInsets.only(bottom: 4.0),
-              child: Icon(Icons.map_outlined),
+            BottomNavigationBarItem(
+              icon: const Padding(
+                padding: EdgeInsets.only(bottom: 4.0),
+                child: Icon(Icons.person_outline),
+              ),
+              activeIcon: const Padding(
+                padding: EdgeInsets.only(bottom: 4.0),
+                child: Icon(Icons.person),
+              ),
+              label: 'Profile',
             ),
-            activeIcon: const Padding(
-              padding: EdgeInsets.only(bottom: 4.0),
-              child: Icon(Icons.map),
-            ),
-            label: 'Map',
-          ),
-          BottomNavigationBarItem(
-            icon: const Padding(
-              padding: EdgeInsets.only(bottom: 4.0),
-              child: Icon(Icons.person_outline),
-            ),
-            activeIcon: const Padding(
-              padding: EdgeInsets.only(bottom: 4.0),
-              child: Icon(Icons.person),
-            ),
-            label: 'Profile',
-          ),
-        ],
-        currentIndex: _selectedIndex,
-        selectedItemColor: Colors.blueAccent,
-        unselectedItemColor: Colors.grey,
-        onTap: _onItemTapped,
-        type: BottomNavigationBarType.fixed,
-        backgroundColor: Colors.white,
+          ],
+          currentIndex: _selectedIndex,
+          selectedItemColor: Colors.blueAccent,
+          unselectedItemColor: Colors.grey,
+          onTap: _onItemTapped,
+          type: BottomNavigationBarType.fixed,
+          backgroundColor: Colors.white,
+        ),
       ),
     );
   }

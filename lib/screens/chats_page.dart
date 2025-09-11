@@ -244,6 +244,9 @@ class _PostWidgetState extends State<PostWidget> {
   }
 
   Widget _buildMediaIndicator() {
+    if (widget.post.mediaUrls.length <= 1) {
+      return const SizedBox.shrink();
+    }
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: List.generate(widget.post.mediaUrls.length, (index) {

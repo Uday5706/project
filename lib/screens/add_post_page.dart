@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:geocoding/geocoding.dart' as geo;
 import 'package:image_picker/image_picker.dart';
 import 'package:oceo/providers/posts_provider.dart';
 import 'package:oceo/providers/user_provider.dart';
@@ -24,6 +23,10 @@ class _AddPostPageState extends State<AddPostPage> {
   List<XFile> _selectedMedia = [];
   String? _currentLocation;
   bool _isFetchingLocation = false;
+  bool _isPosting = false;
+
+  double? _latitude;
+  double? _longitude;
 
   @override
   void initState() {
@@ -38,10 +41,19 @@ class _AddPostPageState extends State<AddPostPage> {
   }
 
   Future<void> _addMedia() async {
-    final List<XFile> images = await _picker.pickMultiImage();
-    setState(() {
-      _selectedMedia.addAll(images);
-    });
+    try {
+      final List<XFile> images = await _picker.pickMultiImage();
+      if (images.isEmpty) {
+        print("⚠️ No media selected");
+      } else {
+        print("📸 Selected ${images.length} images");
+      }
+      setState(() {
+        _selectedMedia.addAll(images);
+      });
+    } catch (e) {
+      print("❌ Error picking media: $e");
+    }
   }
 
   Future<void> _fetchLocation() async {
@@ -50,56 +62,108 @@ class _AddPostPageState extends State<AddPostPage> {
       _currentLocation = null;
     });
 
-    final loc = Location();
-    await loc.getCurrentLocation();
-    setState(() {
-      _currentLocation = loc.locationName ?? "Location not found";
-      _isFetchingLocation = false;
-    });
+    try {
+      final loc = Location();
+      await loc.getCurrentLocation();
+      setState(() {
+        _currentLocation = loc.locationName ?? "Location not found";
+        _isFetchingLocation = false;
+        _latitude = loc.latitude;
+        _longitude = loc.longitude;
+      });
+      print("📍 Location fetched: $_currentLocation ($_latitude, $_longitude)");
+    } catch (e) {
+      print("❌ Error fetching location: $e");
+      setState(() {
+        _isFetchingLocation = false;
+        _currentLocation = "Location error";
+      });
+    }
   }
 
-  void _handlePost() {
+  Future<void> _handlePost() async {
     final postText = _textController.text.trim();
     if (postText.isEmpty && _selectedMedia.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please add some text or media to your post.'),
+          ),
+        );
+      }
+      print("⚠️ Tried posting with no text and no media");
       return;
     }
 
-    final postsProvider = Provider.of<PostsProvider>(context, listen: false);
-    final userProvider = Provider.of<UserProvider>(context, listen: false);
-    final List<String> mediaUrls = _selectedMedia
-        .map((file) => file.path)
-        .toList();
+    setState(() {
+      _isPosting = true;
+    });
 
-    final newPost = Post(
-      postId: DateTime.now().millisecondsSinceEpoch.toString(),
-      username: userProvider.user?.displayName ?? 'Current User',
-      userPic:
-          userProvider.user?.photoURL ??
-          'https://via.placeholder.com/150/FFC107/000000?text=CU',
-      postDate: DateTime.now(),
-      upvotes: 0,
-      text: postText,
-      location: geo.Location(
-        latitude: 0,
-        longitude: 0,
-        timestamp: DateTime.now(),
-      ),
-      mediaUrls: mediaUrls,
-    );
+    try {
+      final postsProvider = Provider.of<PostsProvider>(context, listen: false);
+      final userProvider = Provider.of<UserProvider>(context, listen: false);
+      final user = userProvider.user;
 
-    postsProvider.addPost(newPost);
-    widget.onNavigateToTab(0);
+      if (user == null) {
+        print("❌ No logged in user");
+        if (context.mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('User not logged in.')));
+        }
+        return;
+      }
+
+      print("🚀 Starting post upload...");
+      print("📝 Text: $postText");
+      print("🖼️ Media files: ${_selectedMedia.length}");
+      print("👤 User: ${user.displayName}, UID: ${user.uid}");
+
+      await postsProvider.addPost(
+        username: user.displayName ?? 'Current User',
+        userPic:
+            user.photoURL ??
+            'https://via.placeholder.com/150/FFC107/000000?text=CU',
+        text: postText,
+        mediaFiles: _selectedMedia,
+        latitude: _latitude,
+        longitude: _longitude,
+      );
+
+      print("✅ Post successfully uploaded!");
+
+      setState(() {
+        _isPosting = false;
+        _selectedMedia.clear();
+        _textController.clear();
+      });
+
+      widget.onNavigateToTab(0);
+    } catch (e, stack) {
+      print("❌ Error while posting: $e");
+      print(stack);
+      if (context.mounted) {
+        setState(() {
+          _isPosting = false;
+        });
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to post: $e')));
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isPosting = false;
+        });
+      }
+    }
   }
 
   void _removeMedia(int index) {
+    print("🗑️ Removed media at index $index");
     setState(() {
       _selectedMedia.removeAt(index);
     });
-  }
-
-  bool _isImage(String filePath) {
-    final mimeType = filePath.split('.').last.toLowerCase();
-    return ['jpg', 'jpeg', 'png', 'gif', 'webp'].contains(mimeType);
   }
 
   @override
@@ -119,7 +183,7 @@ class _AddPostPageState extends State<AddPostPage> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
             child: TextButton(
-              onPressed: _handlePost,
+              onPressed: _isPosting ? null : _handlePost,
               style: TextButton.styleFrom(
                 backgroundColor: Colors.white,
                 foregroundColor: Colors.blueAccent,
@@ -127,10 +191,20 @@ class _AddPostPageState extends State<AddPostPage> {
                   borderRadius: BorderRadius.circular(20),
                 ),
               ),
-              child: const Text(
-                'Post',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
+              child: _isPosting
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Colors.blueAccent,
+                        ),
+                      ),
+                    )
+                  : const Text(
+                      'Post',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
             ),
           ),
         ],
@@ -203,19 +277,15 @@ class _AddPostPageState extends State<AddPostPage> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
-
-                // Container wrapping media scroller + text field
+                const SizedBox(height: 16),
                 Container(
-                  padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
                     border: Border.all(color: Colors.grey.shade300),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (_selectedMedia.isNotEmpty)
+                      if (_selectedMedia.isNotEmpty) ...[
                         SizedBox(
                           height: 150,
                           child: ListView.builder(
@@ -278,21 +348,25 @@ class _AddPostPageState extends State<AddPostPage> {
                             },
                           ),
                         ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: _textController,
-                        autofocus: true,
-                        maxLines: null,
-                        style: const TextStyle(fontSize: 16),
-                        decoration: InputDecoration(
-                          prefixIcon: const Icon(
-                            Icons.chat,
-                            color: Colors.blueAccent,
+                        const SizedBox(height: 16),
+                      ],
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 150),
+                        child: TextField(
+                          controller: _textController,
+                          autofocus: true,
+                          maxLines: null,
+                          style: const TextStyle(fontSize: 16),
+                          decoration: InputDecoration(
+                            prefixIcon: const Icon(
+                              Icons.chat,
+                              color: Colors.blueAccent,
+                            ),
+                            hintText: 'What do you want to talk about?',
+                            hintStyle: TextStyle(color: Colors.grey.shade400),
+                            border: InputBorder.none,
+                            contentPadding: const EdgeInsets.all(12.0),
                           ),
-                          hintText: 'What do you want to talk about?',
-                          hintStyle: TextStyle(color: Colors.grey.shade400),
-                          border: InputBorder.none,
-                          contentPadding: const EdgeInsets.all(12.0),
                         ),
                       ),
                     ],
