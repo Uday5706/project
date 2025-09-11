@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "255604892442",
+    "project_id": "oceo-5733d",
+    "storage_bucket": "oceo-5733d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:255604892442:android:a36872161922c97e5402a3",
+        "android_client_info": {
+          "package_name": "com.example.sih"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "255604892442-ivavqqhjcatto6ukkbu9f5smpbql1o50.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.sih",
+            "certificate_hash": "970e73d3422cc420fa10c1674528083f13eeecfc"
+          }
+        },
+        {
+          "client_id": "255604892442-tmrr2u8jub23itgkm1hfhevsm4akccui.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA3QD8rXhTAiMcUr7keRo9XRuEeGkI1oKM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "255604892442-tmrr2u8jub23itgkm1hfhevsm4akccui.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
