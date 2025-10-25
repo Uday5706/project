@@ -4,21 +4,28 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:google_cloud_translation/google_cloud_translation.dart';
 import 'package:image_picker/image_picker.dart';
 
-// NOTE: In a larger app, it's best to move each of these model classes
-// into their own files (e.g., lib/models/post_model.dart).
-
+// Note: In a real app, it's best to move these model classes to separate files.
 class Location {
   final double latitude;
   final double longitude;
-  final DateTime timestamp;
 
-  Location({
-    required this.latitude,
-    required this.longitude,
-    required this.timestamp,
-  });
+  Location({required this.latitude, required this.longitude});
+
+  factory Location.fromMap(Map<String, dynamic> map) {
+    return Location(
+      latitude: (map['latitude'] as num?)?.toDouble() ?? 0.0,
+      longitude: (map['longitude'] as num?)?.toDouble() ?? 0.0,
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'latitude': latitude,
+    'longitude': longitude,
+  };
 }
 
 class Comment {
@@ -64,7 +71,7 @@ class Post {
   final DateTime postDate;
   final Location? location;
   final int upvotes;
-  final String text;
+  final Map<String, String> text;
   final List<Comment> comments;
   final List<String> mediaUrls;
   final String userId;
@@ -86,28 +93,26 @@ class Post {
 
   factory Post.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
-    final locationData = data['location'] as Map<String, dynamic>?;
-    final commentsData = data['comments'] as List<dynamic>? ?? [];
-    final comments = commentsData
-        .map((commentData) => Comment.fromMap(commentData))
-        .toList();
-    comments.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    Map<String, String> postText = {};
+    if (data['text'] is String) {
+      postText['en'] = data['text']; // Backwards compatibility
+    } else if (data['text'] is Map) {
+      postText = Map<String, String>.from(data['text']);
+    }
 
     return Post(
       postId: doc.id,
       username: data['username'] ?? '',
       userPic: data['userPic'] ?? '',
       postDate: (data['postDate'] as Timestamp).toDate(),
-      location: locationData != null
-          ? Location(
-              latitude: locationData['latitude'],
-              longitude: locationData['longitude'],
-              timestamp: (locationData['timestamp'] as Timestamp).toDate(),
-            )
+      location: data['location'] != null
+          ? Location.fromMap(data['location'])
           : null,
       upvotes: data['upvotes'] ?? 0,
-      text: data['text'] ?? '',
-      comments: comments,
+      text: postText,
+      comments: (data['comments'] as List<dynamic>? ?? [])
+          .map((c) => Comment.fromMap(c))
+          .toList(),
       mediaUrls: List<String>.from(data['mediaUrls'] ?? []),
       userId: data['userId'] ?? '',
       upvotedBy: List<String>.from(data['upvotedBy'] ?? []),
@@ -116,19 +121,14 @@ class Post {
 
   Map<String, dynamic> toFirestore() {
     return {
+      'postId': postId,
       'username': username,
       'userPic': userPic,
       'postDate': postDate,
-      'location': location != null
-          ? {
-              'latitude': location!.latitude,
-              'longitude': location!.longitude,
-              'timestamp': location!.timestamp,
-            }
-          : null,
+      'location': location?.toMap(),
       'upvotes': upvotes,
       'text': text,
-      'comments': comments.map((comment) => comment.toMap()).toList(),
+      'comments': comments.map((c) => c.toMap()).toList(),
       'mediaUrls': mediaUrls,
       'userId': userId,
       'upvotedBy': upvotedBy,
@@ -139,18 +139,19 @@ class Post {
     int? upvotes,
     List<Comment>? comments,
     List<String>? upvotedBy,
+    Map<String, String>? text,
   }) {
     return Post(
-      postId: this.postId,
-      username: this.username,
-      userPic: this.userPic,
-      postDate: this.postDate,
-      location: this.location,
+      postId: postId,
+      username: username,
+      userPic: userPic,
+      postDate: postDate,
+      location: location,
       upvotes: upvotes ?? this.upvotes,
-      text: this.text,
+      text: text ?? this.text,
       comments: comments ?? this.comments,
-      mediaUrls: this.mediaUrls,
-      userId: this.userId,
+      mediaUrls: mediaUrls,
+      userId: userId,
       upvotedBy: upvotedBy ?? this.upvotedBy,
     );
   }
@@ -160,7 +161,11 @@ class PostsProvider with ChangeNotifier {
   final _firestore = FirebaseFirestore.instance;
   final _storage = FirebaseStorage.instance;
   List<Post> _posts = [];
-  bool _isLoading = false;
+  bool _isLoading = true;
+  final Map<String, String> _translationCache = {};
+  final Translation _translator = Translation(
+    apiKey: 'AIzaSyDFO-ueHRWJeFl4mVfdbKq8_jMYvO4PBtU',
+  );
 
   List<Post> get posts => _posts;
   bool get isLoading => _isLoading;
@@ -187,138 +192,9 @@ class PostsProvider with ChangeNotifier {
         .snapshots()
         .listen((snapshot) {
           _posts = snapshot.docs.map((doc) => Post.fromFirestore(doc)).toList();
+          if (_isLoading) _isLoading = false;
           notifyListeners();
         });
-  }
-
-  Future<void> addCommentToPost(String postId, Comment comment) async {
-    final postIndex = _posts.indexWhere((p) => p.postId == postId);
-    if (postIndex == -1) return;
-
-    final originalPost = _posts[postIndex];
-
-    // 1. Optimistically update local state
-    final newComments = [comment, ...originalPost.comments];
-    final updatedPost = originalPost.copyWith(comments: newComments);
-    _posts[postIndex] = updatedPost;
-    notifyListeners();
-
-    // 2. Attempt to update the database
-    try {
-      final postRef = _firestore.collection('posts').doc(postId);
-      await postRef.update({
-        'comments': FieldValue.arrayUnion([comment.toMap()]),
-      });
-    } catch (e) {
-      // 3. If it fails, revert the local change and notify UI
-      if (kDebugMode) print("❌ Failed to add comment, reverting. Error: $e");
-      _posts[postIndex] = originalPost;
-      notifyListeners();
-      rethrow;
-    }
-  }
-
-  // In lib/providers/posts_provider.dart
-
-  Future<Post?> addPost({
-    required String username,
-    required String userPic,
-    required String text,
-    required List<XFile> mediaFiles,
-    required double? latitude,
-    required double? longitude,
-  }) async {
-    _setLoading(true);
-    final userId = FirebaseAuth.instance.currentUser?.uid;
-    if (userId == null) {
-      if (kDebugMode) print("❌ No user logged in to add post");
-      _setLoading(false);
-      return null;
-    }
-    try {
-      // Media upload logic (unchanged)
-      final List<String> mediaUrls = await Future.wait(
-        mediaFiles.map((file) async {
-          final ref = _storage.ref().child('post_media/$userId/${file.name}');
-          await ref.putFile(File(file.path));
-          return await ref.getDownloadURL();
-        }),
-      );
-      final Location? postLocation = (latitude != null && longitude != null)
-          ? Location(
-              latitude: latitude,
-              longitude: longitude,
-              timestamp: DateTime.now(),
-            )
-          : null;
-
-      // Create a temporary post object with all the data
-      final newPostData = Post(
-        postId: '', // Temporary ID
-        username: username,
-        userPic: userPic,
-        postDate: DateTime.now(),
-        upvotes: 0,
-        text: text,
-        userId: userId,
-        location: postLocation,
-        mediaUrls: mediaUrls,
-        comments: [],
-        upvotedBy: [],
-      );
-
-      // Add it to Firestore
-      final docRef = await _firestore
-          .collection('posts')
-          .add(newPostData.toFirestore());
-
-      // Create the final Post object with the REAL postId from Firestore
-      final finalPost = Post(
-        postId: docRef.id,
-        username: newPostData.username,
-        userPic: newPostData.userPic,
-        postDate: newPostData.postDate,
-        location: newPostData.location,
-        upvotes: newPostData.upvotes,
-        text: newPostData.text,
-        comments: newPostData.comments,
-        mediaUrls: newPostData.mediaUrls,
-        userId: newPostData.userId,
-        upvotedBy: newPostData.upvotedBy,
-      );
-
-      if (kDebugMode) print("✅ Post successfully added!");
-      _setLoading(false);
-      return finalPost; // Return the complete Post object
-    } catch (e, stack) {
-      if (kDebugMode) {
-        print("❌ Error adding post: $e");
-        print(stack);
-      }
-      _setLoading(false);
-      return null;
-    }
-  }
-
-  // In PostsProvider class
-  Future<void> deletePost(String postId) async {
-    // 1. Optimistically remove from the local list for instant UI update
-    final postIndex = _posts.indexWhere((p) => p.postId == postId);
-    if (postIndex == -1) return;
-    final postToRemove = _posts[postIndex];
-    _posts.removeAt(postIndex);
-    notifyListeners();
-
-    // 2. Attempt to delete from the database
-    try {
-      await _firestore.collection('posts').doc(postId).delete();
-    } catch (e) {
-      // 3. If it fails, add the post back to the local list and notify UI
-      print("❌ Failed to delete post, reverting. Error: $e");
-      _posts.insert(postIndex, postToRemove);
-      notifyListeners();
-      rethrow;
-    }
   }
 
   Future<void> refreshPosts() async {
@@ -335,19 +211,145 @@ class PostsProvider with ChangeNotifier {
     }
   }
 
-  // In lib/providers/posts_provider.dart
+  Future<String?> translatePostText(
+    String postId,
+    String text,
+    String targetLanguage,
+  ) async {
+    final cacheKey = '$postId-$targetLanguage';
+    if (_translationCache.containsKey(cacheKey)) {
+      return _translationCache[cacheKey];
+    }
+    try {
+      final translated = await _translator.translate(
+        text: text,
+        to: targetLanguage,
+      );
+      final result = translated.translatedText;
+      _translationCache[cacheKey] = result;
+      return result;
+    } catch (e) {
+      print("❌ Translation Error: $e");
+      return "Translation failed.";
+    }
+  }
+
+  Future<Post?> addPost({
+    required String username,
+    required String userPic,
+    required String text,
+    required List<XFile> mediaFiles,
+    required double? latitude,
+    required double? longitude,
+  }) async {
+    _setLoading(true);
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) {
+      _setLoading(false);
+      return null;
+    }
+    try {
+      final List<String> mediaUrls = await Future.wait(
+        mediaFiles.map((file) async {
+          final ref = _storage.ref().child(
+            'post_media/$userId/${DateTime.now().millisecondsSinceEpoch}-${file.name}',
+          );
+          await ref.putFile(File(file.path));
+          return await ref.getDownloadURL();
+        }),
+      );
+
+      final newPostData = Post(
+        postId: '',
+        username: username,
+        userPic: userPic,
+        postDate: DateTime.now(),
+        upvotes: 0,
+        text: {'en': text},
+        userId: userId,
+        location: (latitude != null && longitude != null)
+            ? Location(latitude: latitude, longitude: longitude)
+            : null,
+        mediaUrls: mediaUrls,
+        comments: [],
+        upvotedBy: [],
+      );
+
+      final docRef = await _firestore
+          .collection('posts')
+          .add(newPostData.toFirestore());
+
+      final finalPost = newPostData.copyWith(
+        // The copyWith method isn't set up to copy postId, so we'll construct manually
+      );
+
+      final finalPostWithId = Post(
+        postId: docRef.id,
+        username: newPostData.username,
+        userPic: newPostData.userPic,
+        postDate: newPostData.postDate,
+        location: newPostData.location,
+        upvotes: newPostData.upvotes,
+        text: newPostData.text,
+        comments: newPostData.comments,
+        mediaUrls: newPostData.mediaUrls,
+        userId: newPostData.userId,
+        upvotedBy: newPostData.upvotedBy,
+      );
+
+      _setLoading(false);
+      return finalPostWithId;
+    } catch (e) {
+      _setLoading(false);
+      rethrow;
+    }
+  }
+
+  Future<void> deletePost(String postId) async {
+    final postIndex = _posts.indexWhere((p) => p.postId == postId);
+    if (postIndex == -1) return;
+    final postToRemove = _posts[postIndex];
+    _posts.removeAt(postIndex);
+    notifyListeners();
+
+    try {
+      await _firestore.collection('posts').doc(postId).delete();
+    } catch (e) {
+      _posts.insert(postIndex, postToRemove);
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<void> addCommentToPost(String postId, Comment comment) async {
+    final postIndex = _posts.indexWhere((p) => p.postId == postId);
+    if (postIndex == -1) return;
+    final originalPost = _posts[postIndex];
+    final updatedPost = originalPost.copyWith(
+      comments: [comment, ...originalPost.comments],
+    );
+    _posts[postIndex] = updatedPost;
+    notifyListeners();
+    try {
+      final postRef = _firestore.collection('posts').doc(postId);
+      await postRef.update({
+        'comments': FieldValue.arrayUnion([comment.toMap()]),
+      });
+    } catch (e) {
+      _posts[postIndex] = originalPost;
+      notifyListeners();
+      rethrow;
+    }
+  }
 
   Future<void> toggleUpvotePost(String postId, String postOwnerId) async {
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null) return;
-
     final postIndex = _posts.indexWhere((p) => p.postId == postId);
     if (postIndex == -1) return;
-
     final originalPost = _posts[postIndex];
     final isAlreadyUpvoted = originalPost.upvotedBy.contains(userId);
 
-    // 1. Optimistic local update (this part is correct)
     final updatedPost = originalPost.copyWith(
       upvotes: isAlreadyUpvoted
           ? originalPost.upvotes - 1
@@ -359,25 +361,15 @@ class PostsProvider with ChangeNotifier {
     _posts[postIndex] = updatedPost;
     notifyListeners();
 
-    // 2. Attempt to update the database
     try {
       final postRef = _firestore.collection('posts').doc(postId);
-
-      final transactionUpdate = {
+      await postRef.update({
         'upvotes': FieldValue.increment(isAlreadyUpvoted ? -1 : 1),
         'upvotedBy': isAlreadyUpvoted
             ? FieldValue.arrayRemove([userId])
             : FieldValue.arrayUnion([userId]),
-      };
-
-      // CORRECTED: We only need to update the main post document.
-      // The batch and the userPostRef update have been removed.
-      await postRef.update(transactionUpdate);
+      });
     } catch (e) {
-      // 3. If it fails, revert the local change
-      if (kDebugMode) {
-        print("❌ Failed to toggle upvote, reverting. Error: $e");
-      }
       _posts[postIndex] = originalPost;
       notifyListeners();
       rethrow;

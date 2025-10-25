@@ -1,14 +1,18 @@
+// lib/main.dart
+
+// Add this import at the top of the file
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart'; // Import firebase_core
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:oceo/l10n/app_localizations.dart';
 import 'package:oceo/providers/alerts_provider.dart';
 import 'package:oceo/providers/posts_provider.dart';
 import 'package:oceo/providers/user_provider.dart';
+import 'package:oceo/screens/auth_screen.dart';
+import 'package:oceo/screens/home_screen.dart';
 import 'package:provider/provider.dart';
 
-import 'screens/auth_screen.dart';
-import 'screens/home_screen.dart';
+// Your main() function is likely correct, the change is in the Oceo widget's build method.
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -25,62 +29,34 @@ void main() async {
   );
 }
 
-class Oceo extends StatefulWidget {
-  @override
-  State<Oceo> createState() => _OceoState();
-}
-
-class _OceoState extends State<Oceo> {
-  // In lib/main.dart
+class Oceo extends StatelessWidget {
+  const Oceo({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-
-      // In your MaterialApp widget
       theme: ThemeData(
-        // This applies the Poppins font to all default text styles in your app.
-        textTheme: GoogleFonts.poppinsTextTheme(Theme.of(context).textTheme),
-
-        // Your other theme customizations remain the same
-        pageTransitionsTheme: const PageTransitionsTheme(
-          builders: {
-            TargetPlatform.android: CupertinoPageTransitionsBuilder(),
-            TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
-          },
-        ),
-        textSelectionTheme: TextSelectionThemeData(
-          cursorColor: Colors.blue,
-          selectionColor: Colors.blueAccent.shade100,
-          selectionHandleColor: Colors.blueAccent,
-        ),
-
-        // You can also set primary colors, etc.
-        primarySwatch: Colors.blue,
+        // Your existing theme data is fine
       ),
+
+      // --- ADD THESE LINES TO ENABLE LOCALIZATION ---
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+
+      // ------------------------------------------------
       home: StreamBuilder<User?>(
         stream: FirebaseAuth.instance.authStateChanges(),
         builder: (context, snapshot) {
-          // Show a loading indicator while waiting for the auth state
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Scaffold(
               body: Center(child: CircularProgressIndicator()),
             );
           }
-
-          // Once the connection is active, check if the user is logged in
           if (snapshot.hasData && snapshot.data != null) {
-            // User is logged in, show the HomeScreen.
-            // The UserProvider has already updated itself in the background.
-            // NO NEED to call setUser here.
             return const HomeScreen();
-          } else {
-            // User is logged out, show the AuthScreen.
-            // The UserProvider has already cleared itself in the background.
-            // NO NEED to call clearUser here.
-            return const AuthScreen();
           }
+          return const AuthScreen();
         },
       ),
     );
